@@ -1,0 +1,15 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "AI Defender Azure Functions backend",
+  "main": "src/functions/scan.js",
+  "scripts": {
+    "start": "func start",
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "license": "ISC"
+}
