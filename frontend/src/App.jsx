@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { exporteerDevRapportDocx, exporteerDevRapportPdf, maakKlantmailTekst } from "./exports";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://func-ai-defender.azurewebsites.net/api";
 
@@ -13,6 +14,12 @@ const TALEN = {
     scanBezig: "Scan bezig...",
     foutUrl: "Voer een geldige URL in, inclusief https://",
     foutScan: "Scan mislukt. Probeer het opnieuw.",
+    exportDocx: "Dev rapport (Word)",
+    exportPdf: "Dev rapport (PDF)",
+    klantmail: "Klantmail opstellen",
+    mailKopieert: "Gekopieerd!",
+    mailKopieer: "Kopieer mail",
+    mailSluiten: "Sluiten",
   },
   en: {
     titel: "AI Defender",
@@ -24,6 +31,12 @@ const TALEN = {
     scanBezig: "Scanning...",
     foutUrl: "Please enter a valid URL including https://",
     foutScan: "Scan failed. Please try again.",
+    exportDocx: "Dev report (Word)",
+    exportPdf: "Dev report (PDF)",
+    klantmail: "Compose client email",
+    mailKopieert: "Copied!",
+    mailKopieer: "Copy email",
+    mailSluiten: "Close",
   },
 };
 
@@ -70,12 +83,50 @@ function Bevinding({ item }) {
   );
 }
 
+function MailModal({ tekst, t, onSluiten }) {
+  var [gekopieerd, setGekopieerd] = useState(false);
+
+  function kopieer() {
+    navigator.clipboard.writeText(tekst).then(function() {
+      setGekopieerd(true);
+      setTimeout(function() { setGekopieerd(false); }, 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <h2 className="text-sm font-medium text-slate-200">{t.klantmail}</h2>
+          <button onClick={onSluiten} className="text-slate-400 hover:text-slate-200 text-lg">✕</button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans">{tekst}</pre>
+        </div>
+        <div className="p-4 border-t border-slate-800 flex gap-3">
+          <button
+            onClick={kopieer}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${gekopieerd ? "bg-green-700 text-white" : "bg-sky-600 hover:bg-sky-500 text-white"}`}
+          >
+            {gekopieerd ? t.mailKopieert : t.mailKopieer}
+          </button>
+          <button onClick={onSluiten} className="px-4 py-2.5 text-sm text-slate-400 hover:text-slate-200">
+            {t.mailSluiten}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   var [taal, setTaal] = useState("nl");
   var [url, setUrl] = useState("");
   var [bezig, setBezig] = useState(false);
   var [fout, setFout] = useState("");
   var [resultaat, setResultaat] = useState(null);
+  var [mailTekst, setMailTekst] = useState(null);
+  var [exportBezig, setExportBezig] = useState("");
   var t = TALEN[taal];
 
   function isGeldigeUrl(waarde) {
@@ -104,12 +155,33 @@ export default function App() {
     }
   }
 
+  async function handleDocx() {
+    setExportBezig("docx");
+    try { await exporteerDevRapportDocx(resultaat); }
+    catch(e) { console.error(e); }
+    finally { setExportBezig(""); }
+  }
+
+  function handlePdf() {
+    setExportBezig("pdf");
+    try { exporteerDevRapportPdf(resultaat); }
+    catch(e) { console.error(e); }
+    finally { setExportBezig(""); }
+  }
+
+  function handleMail() {
+    var tekst = maakKlantmailTekst(resultaat, taal);
+    setMailTekst(tekst);
+  }
+
   var alleResultaten = resultaat ? Object.values(resultaat.resultaten).flat() : [];
   var kritiek = alleResultaten.filter(function(r) { return r.risico === "kritiek"; });
   var hoog = alleResultaten.filter(function(r) { return r.risico === "hoog"; });
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      {mailTekst && <MailModal tekst={mailTekst} t={t} onSluiten={function() { setMailTekst(null); }} />}
+
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center gap-3">
         <svg className="w-7 h-7 text-sky-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
@@ -123,18 +195,31 @@ export default function App() {
           <option value="en">English</option>
         </select>
       </header>
+
       <main className="flex-1 px-4 pt-8 pb-16 max-w-3xl mx-auto w-full">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-6">
           <p className="text-sm text-slate-400 mb-4">{t.invoerLabel}</p>
           <div className="flex gap-3">
-            <input type="url" value={url} onChange={function(e) { setUrl(e.target.value); }} onKeyDown={function(e) { if(e.key==="Enter") startScan(); }} placeholder={t.placeholder} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500" />
-            <button onClick={startScan} disabled={bezig} className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg px-5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap">
+            <input
+              type="url"
+              value={url}
+              onChange={function(e) { setUrl(e.target.value); }}
+              onKeyDown={function(e) { if(e.key === "Enter") startScan(); }}
+              placeholder={t.placeholder}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+            <button
+              onClick={startScan}
+              disabled={bezig}
+              className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg px-5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+            >
               {bezig ? t.scanBezig : t.scanKnop}
             </button>
           </div>
           {fout && <p className="mt-3 text-sm text-red-400">{fout}</p>}
           <p className="mt-3 text-xs text-slate-500">{t.disclaimer}</p>
         </div>
+
         {resultaat && (
           <div className="space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
@@ -146,15 +231,39 @@ export default function App() {
                 <ScoreCircle score={resultaat.score} rating={resultaat.rating} />
               </div>
               {resultaat.rapport && resultaat.rapport.samenvatting && (
-                <p className="text-sm text-slate-300 bg-slate-800 rounded-lg p-4">{resultaat.rapport.samenvatting}</p>
+                <p className="text-sm text-slate-300 bg-slate-800 rounded-lg p-4 mb-4">{resultaat.rapport.samenvatting}</p>
               )}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
+                <button
+                  onClick={handleDocx}
+                  disabled={exportBezig === "docx"}
+                  className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 rounded-lg px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                >
+                  📄 {exportBezig === "docx" ? "Bezig..." : t.exportDocx}
+                </button>
+                <button
+                  onClick={handlePdf}
+                  disabled={exportBezig === "pdf"}
+                  className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 rounded-lg px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                >
+                  📑 {exportBezig === "pdf" ? "Bezig..." : t.exportPdf}
+                </button>
+                <button
+                  onClick={handleMail}
+                  className="bg-sky-900 hover:bg-sky-800 text-sky-200 rounded-lg px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                >
+                  ✉️ {t.klantmail}
+                </button>
+              </div>
             </div>
+
             {(kritiek.length > 0 || hoog.length > 0) && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                 <h2 className="text-sm font-medium text-slate-200 mb-3">Kritieke en hoge bevindingen</h2>
                 {kritiek.concat(hoog).map(function(item, i) { return <Bevinding key={i} item={item} />; })}
               </div>
             )}
+
             {resultaat.rapport && resultaat.rapport.topActies && resultaat.rapport.topActies.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                 <h2 className="text-sm font-medium text-slate-200 mb-3">Actieplan</h2>
@@ -169,6 +278,7 @@ export default function App() {
                 })}
               </div>
             )}
+
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
               <h2 className="text-sm font-medium text-slate-200 mb-3">Alle bevindingen</h2>
               {Object.entries(resultaat.resultaten).map(function(entry) {
