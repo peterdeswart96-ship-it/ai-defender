@@ -182,7 +182,7 @@ async function genereerRapport(url, scanResultaten, taal) {
   });
   var data = await response.json();
   var tekst = data.content && data.content[0] ? data.content[0].text : "{}";
-  try { return JSON.parse(tekst); } catch(e) { return { samenvatting: tekst, kritiekeBevindingen: [], positieveBevindingen: [], topActies: [] }; }
+  tekst = tekst.replace(/```json|```/g, "").trim(); try { return JSON.parse(tekst); } catch(e) { return { samenvatting: tekst, kritiekeBevindingen: [], positieveBevindingen: [], topActies: [] }; }
 }
 
 app.http("scan", {
